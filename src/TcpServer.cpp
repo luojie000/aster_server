@@ -184,6 +184,7 @@ void TcpServer::handleAccept()
         loop_.removeChannel(client_fd);
         loop_.queueInLoop([this,client_fd](){
             connections_.erase(client_fd);
+            std::cout<<"client_fd is closed\n";
         });
     });
     //get the channel
