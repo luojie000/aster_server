@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
-add_executable(aster_server src/main.cpp)
+add_executable(aster_server src/main.cpp src/Epoll.cpp src/EventLoop.cpp src/Channel.cpp src/TcpServer.cpp src/TcpConnection.cpp)
 
 target_include_directories(aster_server
     PRIVATE ${PROJECT_SOURCE_DIR}/include

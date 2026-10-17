@@ -1,19 +1,28 @@
 #include "TcpServer.h"
 #include <iostream>
 #include <unistd.h>
+#include<cstdio>
+#include<cerrno>
+#include<memory>
+#include<utility>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include<stdexcept>
 
-TcpServer::TcpServer(EventLoop&loop,int port):loop_(loop),port_(port),server_fd(-1),handleAccept_(nullptr){}
+TcpServer::TcpServer(EventLoop&loop,int port):loop_(loop),server_fd(-1),port_(port),handleAccept_(nullptr){}
 
 
 TcpServer::~TcpServer()
 {
 
+    for(auto&connection:connections_)
+    {
+        loop_.removeChannel(connection.first);
+    }
     if(server_fd!= -1)
     {
+        loop_.removeChannel(server_fd);
         close(server_fd);
     }
 
@@ -36,7 +45,7 @@ void TcpServer::initSocket()
     */
   server_fd =
         socket(AF_INET,
-            SOCK_STREAM,
+            SOCK_STREAM|SOCK_NONBLOCK,
             0
         );
 
@@ -143,11 +152,54 @@ void TcpServer::start()
 
 void TcpServer::handleAccept()
 {
-    int client_fd=accept(server_fd,nullptr,nullptr);
+   while(true)
+   {
+    int client_fd=accept4(server_fd,nullptr,nullptr,SOCK_NONBLOCK);
     if(client_fd==-1)
     {
-        std::cerr<<"client failed\n";
-        return ;
+        if(errno==EAGAIN||errno==EWOULDBLOCK)
+        {
+            //当前连接队列为空
+            break;
+
+        }
+        if(errno==EINTR)
+        {
+            continue;
+        }
+        perror("accept");
+        break;
+    }
+    std::unique_ptr<TcpConnection> connection;
+    try
+    {
+        connection=std::make_unique<TcpConnection>(client_fd);
+    }
+    catch(...)
+    {
+        close(client_fd);
+        throw;
+    }
+    connection->setCloseCallback([this,client_fd](){
+        loop_.removeChannel(client_fd);
+        loop_.queueInLoop([this,client_fd](){
+            connections_.erase(client_fd);
+        });
+    });
+    //get the channel
+    Channel* client_channel=connection->channel();
+    //注册到eventloop
+    loop_.addChannel(client_channel);
+    //保存连接对象
+    try
+    {
+        connections_[client_fd]=std::move(connection);
+    }
+    catch(...)
+    {
+        loop_.removeChannel(client_fd);
+        throw;
     }
     std::cout<<"new client:"<<client_fd<<"\n";
+   }
 }

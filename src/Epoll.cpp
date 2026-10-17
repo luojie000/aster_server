@@ -2,6 +2,7 @@
 #include<unistd.h>
 #include<cstring>
 #include<stdexcept>
+#include<cerrno>
 
 Epoll::Epoll()
 {
@@ -36,7 +37,11 @@ epoll_ctl(epoll_fd,EPOLL_CTL_DEL,fd,nullptr);
 int Epoll::wait(std::vector<epoll_event>&events,int timeout)
 {
     events.resize(1024);
-    int n=epoll_wait(epoll_fd,events.data(),events.size(),timeout);
+    int n;
+    do
+    {
+        n=epoll_wait(epoll_fd,events.data(),events.size(),timeout);
+    }while(n==-1&&errno==EINTR);
     if(n<0)
     {
         throw std::runtime_error("epoll wait failed");

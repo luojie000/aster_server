@@ -9,9 +9,12 @@ private:
 Epoll epoll;
 bool running;
 std::unordered_map<int,Channel*> channels;
+std::vector<std::function<void()>> pendingCallbacks;
 
 public:
 EventLoop();
 void run();
 void addChannel(Channel* channel);
+void removeChannel(int fd);
+void queueInLoop(std::function<void()> cb);
 };
