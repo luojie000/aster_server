@@ -173,7 +173,7 @@ void TcpServer::handleAccept()
     std::unique_ptr<TcpConnection> connection;
     try
     {
-        connection=std::make_unique<TcpConnection>(client_fd);
+        connection=std::make_unique<TcpConnection>(client_fd,loop_);
     }
     catch(...)
     {

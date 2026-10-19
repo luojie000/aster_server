@@ -9,10 +9,14 @@
 #include<sys/socket.h>
 #include<unistd.h>
 
-TcpConnection::TcpConnection(int fd):fd_(fd),channel_(new Channel(fd))
+TcpConnection::TcpConnection(int fd,EventLoop&loop):fd_(fd),loop_(loop),channel_(new Channel(fd))
 {
 channel_->setReadCallback([this](){
     handleRead();
+});
+
+channel_->setWriteCallback([this](){
+    handleWrite();
 });
 }
 
@@ -42,35 +46,109 @@ void TcpConnection::setCloseCallback(std::function<void()> cb)
 void TcpConnection::handleRead()
 {
     char buffer[4096];
+
     ssize_t n;
+
     do
     {
-        n=recv(fd_,buffer,sizeof(buffer),0);
-    }while(n==-1&&errno==EINTR);
-    if(n>0)
-    {
-        std::string message(buffer,n);
-        std::cout<<"client fd="<<fd_<<",message:"<<message<<"\n";
+        n = recv(fd_, buffer, sizeof(buffer), 0);
     }
-    else if(n==0)
+    while (n == -1 && errno == EINTR);
+
+    if (n > 0)
     {
-        //Z暂时只打印，后续完善连接清理
-        std::cout<<"client fd="<<fd_<<" disconnection\n";
-        if(closeCallback_)
+        std::string message(buffer, static_cast<size_t>(n));
+
+        // 把新数据追加到尚未发送的缓冲区
+        outputBuffer_ += message;
+
+        std::cout
+            << "client fd=" << fd_
+            << ", message: " << message
+            << "\n";
+
+        // 尝试发送
+        handleWrite();
+    }
+    else if (n == 0)
+    {
+        std::cout << "client fd=" << fd_
+                  << " disconnected\n";
+
+        if (closeCallback_)
         {
             closeCallback_();
         }
     }
-    else
+    else if (errno != EAGAIN && errno != EWOULDBLOCK)
     {
-        //非阻塞不一定是错误
-        if(errno!=EAGAIN&&errno!=EWOULDBLOCK)
+        perror("recv");
+
+        if (closeCallback_)
         {
-            perror("recv");
-            if(closeCallback_)
+            closeCallback_();
+        }
+    }
+}
+
+
+
+void TcpConnection::handleWrite()
+{
+    size_t sendindex = 0;
+
+    while (sendindex < outputBuffer_.size())
+    {
+        ssize_t n = send(
+            fd_,
+            outputBuffer_.data() + sendindex,
+            outputBuffer_.size() - sendindex,
+            MSG_NOSIGNAL
+        );
+
+        if (n > 0)
+        {
+            sendindex += static_cast<size_t>(n);
+        }
+        else if (n == -1 && errno == EINTR)
+        {
+            continue;
+        }
+        else if (
+            n == -1 &&
+            (errno == EAGAIN || errno == EWOULDBLOCK)
+        )
+        {
+            break;
+        }
+        else
+        {
+            if (closeCallback_)
             {
                 closeCallback_();
             }
+            return;
+        }
+    }
+
+    outputBuffer_.erase(0, sendindex);
+
+    if (!outputBuffer_.empty())
+    {
+        // 还有数据没有发送完
+        if (!channel_->isWriting())
+        {
+            channel_->enableWriting();
+            loop_.updateChannel(channel_);
+        }
+    }
+    else
+    {
+        // 数据已经全部发送完
+        if (channel_->isWriting())
+        {
+            channel_->disableWriting();
+            loop_.updateChannel(channel_);
         }
     }
 }

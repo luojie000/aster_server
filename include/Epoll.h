@@ -10,6 +10,7 @@ Epoll();
 
 void addFd(int fd,uint32_t events);
 void removeFd(int fd);
+void modifyFd(int fd,uint32_t events);
 
 
 //wait

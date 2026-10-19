@@ -14,7 +14,12 @@ std::vector<std::function<void()>> pendingCallbacks;
 public:
 EventLoop();
 void run();
+
+
 void addChannel(Channel* channel);
+void updateChannel(Channel* channel);
+
+
 void removeChannel(int fd);
 void queueInLoop(std::function<void()> cb);
 };

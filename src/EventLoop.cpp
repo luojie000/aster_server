@@ -21,7 +21,7 @@ void EventLoop::run()
             auto it=channels.find(fd);
             if(it!=channels.end())
             {
-                it->second->handleEvent();
+                it->second->handleEvent(event.events);
             }
         }
         std::vector<std::function<void()>> callbacks;
@@ -43,6 +43,21 @@ void EventLoop::removeChannel(int fd)
     }
 }
 
+void EventLoop::updateChannel(Channel*channel)
+{
+    if(channel==nullptr)
+    {
+        return ;
+    }
+    int fd=channel->fd();
+    auto it=channels.find(fd);
+    if(it==channels.end()||it->second!=channel)
+    {
+        return;
+    }
+    epoll.modifyFd(fd,channel->events());
+}
+
 void EventLoop::queueInLoop(std::function<void()> cb)
 {
     pendingCallbacks.push_back(std::move(cb));
@@ -58,7 +73,7 @@ void EventLoop::addChannel(Channel*channel)
     channels[fd]=channel;
     try
     {
-        epoll.addFd(fd,EPOLLIN);
+        epoll.addFd(fd,channel->events());
     }
     catch(...)
     {

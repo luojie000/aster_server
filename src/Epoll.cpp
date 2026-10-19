@@ -34,6 +34,21 @@ void Epoll::removeFd(int fd)
 epoll_ctl(epoll_fd,EPOLL_CTL_DEL,fd,nullptr);
 }
 
+void Epoll::modifyFd(int fd, uint32_t events)
+{
+    epoll_event ev{};
+    //epoll_event ev{};
+    //ev.events=events;
+    //ev.data.fd=fd;
+    ev.events = events;
+    ev.data.fd = fd;
+
+    if (epoll_ctl(epoll_fd_,EPOLL_CTL_MOD,fd, &ev) == -1)
+    {
+        perror("epoll_ctl MOD");
+    }
+}
+
 int Epoll::wait(std::vector<epoll_event>&events,int timeout)
 {
     events.resize(1024);
