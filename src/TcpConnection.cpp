@@ -43,53 +43,104 @@ void TcpConnection::setCloseCallback(std::function<void()> cb)
     closeCallback_=std::move(cb);
 }
 
+
 void TcpConnection::handleRead()
 {
     char buffer[4096];
+    size_t received = 0;
 
-    ssize_t n;
-
-    do
+    while (true)
     {
-        n = recv(fd_, buffer, sizeof(buffer), 0);
-    }
-    while (n == -1 && errno == EINTR);
-
-    if (n > 0)
-    {
-        std::string message(buffer, static_cast<size_t>(n));
-
-        // 把新数据追加到尚未发送的缓冲区
-        outputBuffer_ += message;
-
-        std::cout
-            << "client fd=" << fd_
-            << ", message: " << message
-            << "\n";
-
-        // 尝试发送
-        handleWrite();
-    }
-    else if (n == 0)
-    {
-        std::cout << "client fd=" << fd_
-                  << " disconnected\n";
-
-        if (closeCallback_)
+        // 缓冲区已经装满，先处理已有数据
+        if (received == sizeof(buffer))
         {
-            closeCallback_();
+            outputBuffer_.append(buffer, received);
+            received = 0;
         }
-    }
-    else if (errno != EAGAIN && errno != EWOULDBLOCK)
-    {
+
+        ssize_t n = recv(
+            fd_,
+            buffer + received,
+            sizeof(buffer) - received,
+            0
+        );
+
+        if (n > 0)
+        {
+            // 累计本次成功读取的字节数
+            received += static_cast<size_t>(n);
+            continue;
+        }
+
+        if (n == 0)
+        {
+            // 保存本轮已经读取但尚未追加的数据
+            if (received > 0)
+            {
+                outputBuffer_.append(buffer, received);
+            }
+
+            std::cout
+                << "client fd=" << fd_
+                << " disconnected\n";
+
+            if (closeCallback_)
+            {
+                closeCallback_();
+            }
+
+            return;
+        }
+
+        // n == -1
+
+        if (errno == EINTR)
+        {
+            // 系统调用被信号中断，重新读取
+            continue;
+        }
+
+        if (errno == EAGAIN || errno == EWOULDBLOCK)
+        {
+            // 非阻塞 Socket 当前没有更多数据
+            break;
+        }
+
+        // 其他错误
         perror("recv");
 
+        if (received > 0)
+        {
+            outputBuffer_.append(buffer, received);
+        }
+
         if (closeCallback_)
         {
             closeCallback_();
         }
+
+        return;
+    }
+
+    // 保存本轮最后剩余的数据
+    if (received > 0)
+    {
+        outputBuffer_.append(buffer, received);
+    }
+
+    std::cout
+        << "client fd=" << fd_
+        << ", pending output: "
+        << outputBuffer_.size()
+        << " bytes\n";
+
+    // 读取完成后，尝试发送积累的数据
+    if (!outputBuffer_.empty())
+    {
+        handleWrite();
     }
 }
+
 
 
 
@@ -152,3 +203,4 @@ void TcpConnection::handleWrite()
         }
     }
 }
+  

@@ -1,4 +1,5 @@
 #include "TcpServer.h"
+#include"setNotBlocking.h"
 #include <iostream>
 #include <unistd.h>
 #include<cstdio>
@@ -57,7 +58,7 @@ void TcpServer::initSocket()
         );
     }
 
-
+setNotBlocking(server_fd);
 
     int opt = 1;
 
@@ -154,7 +155,7 @@ void TcpServer::handleAccept()
 {
    while(true)
    {
-    int client_fd=accept4(server_fd,nullptr,nullptr,SOCK_NONBLOCK);
+    int client_fd=accept(server_fd,nullptr,nullptr,SOCK_NONBLOCK);
     if(client_fd==-1)
     {
         if(errno==EAGAIN||errno==EWOULDBLOCK)
@@ -170,6 +171,7 @@ void TcpServer::handleAccept()
         perror("accept");
         break;
     }
+    setNotBlocking(client_fd);
     std::unique_ptr<TcpConnection> connection;
     try
     {
