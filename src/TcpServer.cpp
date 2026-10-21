@@ -16,6 +16,7 @@ TcpServer::TcpServer(EventLoop&loop,int port):loop_(loop),server_fd(-1),port_(po
 
 TcpServer::~TcpServer()
 {
+    lifetime_.reset();
 
     for(auto&connection:connections_)
     {
@@ -46,7 +47,7 @@ void TcpServer::initSocket()
     */
   server_fd =
         socket(AF_INET,
-            SOCK_STREAM|SOCK_NONBLOCK,
+            SOCK_STREAM|SOCK_NONBLOCK|SOCK_CLOEXEC,
             0
         );
 
@@ -63,13 +64,13 @@ setNotBlocking(server_fd);
     int opt = 1;
 
 
-    setsockopt(
+    if (setsockopt(
         server_fd,
         SOL_SOCKET,
         SO_REUSEADDR,
         &opt,
         sizeof(opt)
-    );
+    ) == -1) throw std::runtime_error("setsockopt failed");
 
 /*
 
@@ -139,6 +140,7 @@ if(listen(server_fd,10)==-1)
 
 void TcpServer::start()
 {
+    if (server_fd != -1) throw std::runtime_error("server already started");
     initSocket();
 
     handleAccept_=new Channel(server_fd);
@@ -155,7 +157,7 @@ void TcpServer::handleAccept()
 {
    while(true)
    {
-    int client_fd=accept(server_fd,nullptr,nullptr,SOCK_NONBLOCK);
+    int client_fd=accept4(server_fd,nullptr,nullptr,SOCK_NONBLOCK|SOCK_CLOEXEC);
     if(client_fd==-1)
     {
         if(errno==EAGAIN||errno==EWOULDBLOCK)
@@ -171,7 +173,7 @@ void TcpServer::handleAccept()
         perror("accept");
         break;
     }
-    setNotBlocking(client_fd);
+
     std::unique_ptr<TcpConnection> connection;
     try
     {
@@ -184,7 +186,8 @@ void TcpServer::handleAccept()
     }
     connection->setCloseCallback([this,client_fd](){
         loop_.removeChannel(client_fd);
-        loop_.queueInLoop([this,client_fd](){
+        loop_.queueInLoop([this,client_fd,alive=std::weak_ptr<int>(lifetime_)](){
+            if (alive.expired()) return;
             connections_.erase(client_fd);
             std::cout<<"client_fd is closed\n";
         });

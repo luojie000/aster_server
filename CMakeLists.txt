@@ -8,11 +8,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_compile_options(-Wall -Wextra -Wpedantic)
 
-add_executable(aster_server src/main.cpp src/Epoll.cpp src/EventLoop.cpp src/Channel.cpp src/TcpServer.cpp src/TcpConnection.cpp)
+add_executable(aster_server src/main.cpp src/Epoll.cpp src/EventLoop.cpp src/Channel.cpp src/TcpServer.cpp src/TcpConnection.cpp src/setNotBlocking.cpp)
 
 target_include_directories(aster_server
     PRIVATE ${PROJECT_SOURCE_DIR}/include
 )
 
-enable_testing()
-add_test(NAME server_startup COMMAND aster_server)
+include(CTest)
+if(BUILD_TESTING)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME reactor_integration COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/integration.py $<TARGET_FILE:aster_server>)
+set_tests_properties(reactor_integration PROPERTIES TIMEOUT 45)
+
+add_executable(event_loop_test tests/event_loop_test.cpp src/EventLoop.cpp src/Epoll.cpp src/Channel.cpp)
+target_include_directories(event_loop_test PRIVATE ${PROJECT_SOURCE_DIR}/include)
+add_test(NAME event_loop_callbacks COMMAND event_loop_test)
+set_tests_properties(event_loop_callbacks PROPERTIES TIMEOUT 5)
+endif()

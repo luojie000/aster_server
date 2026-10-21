@@ -1,6 +1,9 @@
 #pragma once
 #include"Channel.h"
 #include<string>
+#include<memory>
+#include"EventLoop.h"
+class EventLoop;
 
 class TcpConnection
 {
@@ -18,7 +21,10 @@ void handleWrite();
     private:
 
     int fd_;
-    Channel* channel_;
+    std::unique_ptr<Channel> channel_;
+    bool closed_ = false;
+    bool readClosed_ = false;
+    void handleClose();
     std::function<void()> closeCallback_;
     std::string outputBuffer_;
 

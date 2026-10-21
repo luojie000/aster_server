@@ -1,5 +1,7 @@
 #pragma once
 #include<functional>
+#include<cstdint>
+#include<sys/epoll.h>
 
 
 class Channel
@@ -7,6 +9,7 @@ class Channel
     public:
     uint32_t events()const;
     void enableWriting();
+    void disableReading() { events_ &= ~(EPOLLIN | EPOLLRDHUP); }
     void disableWriting();
     bool isWriting()const;
 
@@ -20,7 +23,7 @@ class Channel
 
     private:
     int fd_;
-    uint32_t events_=EPOLLIN;
+    uint32_t events_=EPOLLIN|EPOLLRDHUP;
     EventCallback readCallback_;
     EventCallback writeCallback_;
 };

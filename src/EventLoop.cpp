@@ -12,12 +12,11 @@ void EventLoop::run()
     while(running)
     {
         std::vector<epoll_event> events;
-        int n=epoll.wait(events);
-        std::cout<<"events:"<<n<<"\n";
+        epoll.wait(events, pendingCallbacks.empty() ? -1 : 0);
         for(auto&event:events)
         {
             int fd=event.data.fd;
-            std::cout<<"fd"<<fd<<":active"<<"\n";
+
             auto it=channels.find(fd);
             if(it!=channels.end())
             {

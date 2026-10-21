@@ -8,6 +8,7 @@
 
 class TcpServer{
     private:
+   std::shared_ptr<int> lifetime_ = std::make_shared<int>(0);
    EventLoop& loop_;
    int server_fd;
    int port_;
@@ -17,6 +18,8 @@ class TcpServer{
    void initSocket();
    void handleAccept();
     public:
+TcpServer(const TcpServer&) = delete;
+TcpServer& operator=(const TcpServer&) = delete;
 
     TcpServer(EventLoop&loop,int port);
     ~TcpServer();

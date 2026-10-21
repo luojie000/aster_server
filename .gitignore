@@ -5,3 +5,5 @@ cmake-build-*/
 *.so
 core
 *.log
+
+/build-review/

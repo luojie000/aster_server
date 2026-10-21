@@ -6,8 +6,8 @@
 
 Epoll::Epoll()
 {
-    epoll_fd=epoll_create(1);
-    if(epoll_fd==-1)
+    epoll_fd_=epoll_create1(EPOLL_CLOEXEC);
+    if(epoll_fd_==-1)
     {
         throw std::runtime_error("epoll_create failed");
     }
@@ -15,7 +15,7 @@ Epoll::Epoll()
 
 Epoll::~Epoll()
 {
-    close(epoll_fd);
+    close(epoll_fd_);
 }
 
 void Epoll::addFd(int fd,uint32_t events)
@@ -23,7 +23,7 @@ void Epoll::addFd(int fd,uint32_t events)
     epoll_event event{};
     event.events=events;
     event.data.fd=fd;
-    if(epoll_ctl(epoll_fd,EPOLL_CTL_ADD,fd,&event)==-1)
+    if(epoll_ctl(epoll_fd_,EPOLL_CTL_ADD,fd,&event)==-1)
     {
         throw std::runtime_error("epoll add failed");
     }
@@ -31,7 +31,7 @@ void Epoll::addFd(int fd,uint32_t events)
 
 void Epoll::removeFd(int fd)
 {
-epoll_ctl(epoll_fd,EPOLL_CTL_DEL,fd,nullptr);
+epoll_ctl(epoll_fd_,EPOLL_CTL_DEL,fd,nullptr);
 }
 
 void Epoll::modifyFd(int fd, uint32_t events)
@@ -45,7 +45,7 @@ void Epoll::modifyFd(int fd, uint32_t events)
 
     if (epoll_ctl(epoll_fd_,EPOLL_CTL_MOD,fd, &ev) == -1)
     {
-        perror("epoll_ctl MOD");
+        throw std::runtime_error("epoll modify failed");
     }
 }
 
@@ -55,7 +55,7 @@ int Epoll::wait(std::vector<epoll_event>&events,int timeout)
     int n;
     do
     {
-        n=epoll_wait(epoll_fd,events.data(),events.size(),timeout);
+        n=epoll_wait(epoll_fd_,events.data(),events.size(),timeout);
     }while(n==-1&&errno==EINTR);
     if(n<0)
     {
