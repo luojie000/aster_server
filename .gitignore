@@ -7,3 +7,6 @@ core
 *.log
 
 /build-review/
+
+/build-engineering-*/
+__pycache__/

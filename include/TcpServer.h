@@ -24,5 +24,6 @@ TcpServer& operator=(const TcpServer&) = delete;
     TcpServer(EventLoop&loop,int port);
     ~TcpServer();
     void start();
+    int port() const { return port_; }
 
 };

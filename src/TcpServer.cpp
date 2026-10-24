@@ -141,6 +141,9 @@ if(listen(server_fd,10)==-1)
 void TcpServer::start()
 {
     if (server_fd != -1) throw std::runtime_error("server already started");
+    if (port_ < 0 || port_ > 65535) throw std::invalid_argument("port must be 0..65535");
+    try
+    {
     initSocket();
 
     handleAccept_=new Channel(server_fd);
@@ -150,6 +153,21 @@ void TcpServer::start()
     });
 
     loop_.addChannel(handleAccept_);
+    sockaddr_in bound{};
+    socklen_t length = sizeof(bound);
+    if (getsockname(server_fd, reinterpret_cast<sockaddr*>(&bound), &length) == -1)
+        throw std::runtime_error("getsockname failed");
+    port_ = ntohs(bound.sin_port);
+    }
+    catch (...)
+    {
+        loop_.removeChannel(server_fd);
+        delete handleAccept_;
+        handleAccept_ = nullptr;
+        if (server_fd != -1) close(server_fd);
+        server_fd = -1;
+        throw;
+    }
 }
 
 
@@ -189,7 +207,7 @@ void TcpServer::handleAccept()
         loop_.queueInLoop([this,client_fd,alive=std::weak_ptr<int>(lifetime_)](){
             if (alive.expired()) return;
             connections_.erase(client_fd);
-            std::cout<<"client_fd is closed\n";
+            std::cout<<"client_fd:"<<client_fd<<" is closed\n";
         });
     });
     //get the channel

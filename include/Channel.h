@@ -9,6 +9,7 @@ class Channel
     public:
     uint32_t events()const;
     void enableWriting();
+    void enableReading() { events_ |= EPOLLIN | EPOLLRDHUP; }
     void disableReading() { events_ &= ~(EPOLLIN | EPOLLRDHUP); }
     void disableWriting();
     bool isWriting()const;

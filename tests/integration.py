@@ -4,9 +4,10 @@ import struct
 import subprocess
 import sys
 import time
+from server_process import running_server
 
 def connect():
-    return socket.create_connection(('127.0.0.1', 8080), timeout=5)
+    return socket.create_connection(('127.0.0.1', port), timeout=5)
 
 def echo(payload, half_close=False, slow=False):
     with connect() as s:
@@ -31,21 +32,21 @@ def echo(payload, half_close=False, slow=False):
         if half_close:
             assert s.recv(1) == b''
 
-# Do not accidentally test another server already listening on the port.
-with socket.socket() as probe:
-    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    probe.bind(('127.0.0.1', 8080))
-process = subprocess.Popen([sys.argv[1]], stdout=subprocess.DEVNULL)
-try:
-    for _ in range(100):
-        assert process.poll() is None, 'server exited during startup'
-        try:
-            with connect():
-                break
-        except ConnectionRefusedError:
-            time.sleep(.02)
-    else:
-        raise AssertionError('startup timeout')
+with running_server(sys.argv[1]) as (process, port):
+    echo(b'hello')
+    with connect() as idle:
+        idle.shutdown(socket.SHUT_WR)
+        assert idle.recv(1) == b''
+    with connect() as persistent:
+        for payload in [b'a', bytes(range(256)), b'again' * 100]:
+            persistent.sendall(payload)
+            received = bytearray()
+            while len(received) < len(payload):
+                part = persistent.recv(len(payload) - len(received))
+                assert part, 'unexpected EOF'
+                received.extend(part)
+            assert received == payload
+    print('PASS simple echo, empty half-close, persistent connection', flush=True)
     echo(b'half-close regression\x00' * 300, half_close=True)
     print('PASS half-close preserves echo', flush=True)
     echo(bytes(range(256)) * 32768, half_close=True, slow=True)
@@ -60,10 +61,3 @@ try:
     echo(b'alive after reset', half_close=True)
     assert process.poll() is None
     print('PASS resets and reconnect', flush=True)
-finally:
-    process.terminate()
-    try:
-        process.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
