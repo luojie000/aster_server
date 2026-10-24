@@ -1,7 +1,6 @@
 #include"TcpConnection.h"
 
 #include<iostream>
-#include<algorithm>
 #include<string>
 #include<utility>
 #include<cerrno>
@@ -17,11 +16,6 @@ channel_->setReadCallback([this](){
 });
 
 channel_->setWriteCallback([this](){
-    if (outputBuffer_.size() == kOutputLimit) {
-        readPaused_ = true;
-        channel_->disableReading();
-        loop_.updateChannel(channel_.get());
-    }
     handleWrite();
 });
 }
@@ -60,20 +54,12 @@ void TcpConnection::handleClose()
 
 void TcpConnection::handleRead()
 {
-    if (closed_ || readClosed_ || readPaused_) return;
+    if (closed_ || readClosed_) return;
     char buffer[4096];
-    size_t budget = 64 * 1024;
-    while (budget > 0) {
-        const size_t available = kOutputLimit - outputBuffer_.size();
-        if (available == 0) {
-            readPaused_ = true;
-            channel_->disableReading();
-            loop_.updateChannel(channel_.get());
-            break;
-        }
-        const ssize_t n = recv(fd_, buffer, std::min({sizeof(buffer), available, budget}), 0);
+    while (true) {
+        const ssize_t n = recv(fd_, buffer, sizeof(buffer), 0);
         if (n > 0) { outputBuffer_.append(buffer, static_cast<size_t>(n)); 
-            budget -= static_cast<size_t>(n);
+           // std::cout<<"client:"<<fd<<" message:";
             std::cout.write(buffer,n);
             continue; }
         if (n == 0) {
@@ -86,11 +72,6 @@ void TcpConnection::handleRead()
         if (errno == EAGAIN || errno == EWOULDBLOCK) break;
         handleClose();
         return;
-    }
-    if (outputBuffer_.size() == kOutputLimit) {
-        readPaused_ = true;
-        channel_->disableReading();
-        loop_.updateChannel(channel_.get());
     }
     handleWrite();
 }
@@ -150,11 +131,6 @@ void TcpConnection::handleWrite()
             channel_->disableWriting();
             loop_.updateChannel(channel_.get());
         }
-    }
-    if (readPaused_ && !readClosed_ && outputBuffer_.size() <= kResumeLevel) {
-        readPaused_ = false;
-        channel_->enableReading();
-        loop_.updateChannel(channel_.get());
     }
     if (readClosed_ && outputBuffer_.empty()) handleClose();
 }

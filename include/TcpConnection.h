@@ -14,14 +14,9 @@ TcpConnection(int fd,EventLoop&loop);
 
 int fd()const;
 Channel* channel()const;
-void handleRead();
+void handleRead(int fd);
 void setCloseCallback(std::function<void()> cb);
 void handleWrite();
-// Pending application bytes; kernel socket buffers are separate.
-static constexpr size_t kOutputLimit = 1024 * 1024;
-static constexpr size_t kResumeLevel = kOutputLimit / 2;
-size_t pendingOutputBytes() const { return outputBuffer_.size(); }
-bool readPaused() const { return readPaused_; }
 
     private:
 
@@ -29,7 +24,6 @@ bool readPaused() const { return readPaused_; }
     std::unique_ptr<Channel> channel_;
     bool closed_ = false;
     bool readClosed_ = false;
-    bool readPaused_ = false;
     void handleClose();
     std::function<void()> closeCallback_;
     std::string outputBuffer_;
