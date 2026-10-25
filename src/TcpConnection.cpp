@@ -1,6 +1,7 @@
 #include"TcpConnection.h"
 
-#include<iostream>
+#include "Logger.h"
+#include<algorithm>
 #include<string>
 #include<utility>
 #include<cerrno>
@@ -54,15 +55,29 @@ void TcpConnection::handleClose()
 
 void TcpConnection::handleRead()
 {
-    if (closed_ || readClosed_) return;
+    if (closed_ || readClosed_ || readPaused_) return;
     char buffer[4096];
     while (true) {
-        const ssize_t n = recv(fd_, buffer, sizeof(buffer), 0);
-        if (n > 0) { outputBuffer_.append(buffer, static_cast<size_t>(n)); 
-           // std::cout<<"client:"<<fd<<" message:";
-            std::cout.write(buffer,n);
-            continue; }
+        if (outputBuffer_.size() >= kOutputLimit) {
+            readPaused_ = true;
+            channel_->disableReading();
+            loop_.updateChannel(channel_.get());
+            break;
+        }
+        const auto capacity = std::min(sizeof(buffer), kOutputLimit - outputBuffer_.size());
+        const ssize_t n = recv(fd_, buffer, capacity, 0);
+        if (n > 0) {
+            outputBuffer_.append(buffer, static_cast<size_t>(n));
+
+             Logger::instance().log(
+        LogLevel::Debug,
+        "received fd=" + std::to_string(fd_) +
+        " bytes=" + std::to_string(n)+" whose message is:"+outputBuffer_);
+
+            continue;
+        }
         if (n == 0) {
+         
             readClosed_ = true;
             channel_->disableReading();
             loop_.updateChannel(channel_.get());
@@ -70,6 +85,9 @@ void TcpConnection::handleRead()
         }
         if (errno == EINTR) continue;
         if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+        const int error = errno;
+        Logger::instance().log(LogLevel::Warn, "recv failed fd=" + std::to_string(fd_) +
+                               " errno=" + std::to_string(error));
         handleClose();
         return;
     }
@@ -98,15 +116,15 @@ void TcpConnection::handleWrite()
         {
             continue;
         }
-        else if (
-            n == -1 &&
-            (errno == EAGAIN || errno == EWOULDBLOCK)
-        )
+        else if (n == -1 &&(errno == EAGAIN || errno == EWOULDBLOCK))
         {
             break;
         }
         else
         {
+            const int error = n == -1 ? errno : 0;
+            Logger::instance().log(LogLevel::Warn, "send failed fd=" + std::to_string(fd_) +
+                                   " errno=" + std::to_string(error));
             handleClose();
             return;
         }
@@ -131,6 +149,11 @@ void TcpConnection::handleWrite()
             channel_->disableWriting();
             loop_.updateChannel(channel_.get());
         }
+    }
+    if (readPaused_ && !readClosed_ && outputBuffer_.size() <= kOutputLimit / 2) {
+        readPaused_ = false;
+        channel_->enableReading();
+        loop_.updateChannel(channel_.get());
     }
     if (readClosed_ && outputBuffer_.empty()) handleClose();
 }

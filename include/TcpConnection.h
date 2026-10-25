@@ -14,7 +14,10 @@ TcpConnection(int fd,EventLoop&loop);
 
 int fd()const;
 Channel* channel()const;
-void handleRead(int fd);
+void handleRead();
+static constexpr std::size_t kOutputLimit = 1024 * 1024;
+std::size_t pendingOutputBytes() const { return outputBuffer_.size(); }
+bool readPaused() const { return readPaused_; }
 void setCloseCallback(std::function<void()> cb);
 void handleWrite();
 
@@ -24,6 +27,7 @@ void handleWrite();
     std::unique_ptr<Channel> channel_;
     bool closed_ = false;
     bool readClosed_ = false;
+    bool readPaused_ = false;
     void handleClose();
     std::function<void()> closeCallback_;
     std::string outputBuffer_;

@@ -29,6 +29,8 @@ public:
 
     void log(LogLevel level, std::string message);
 
+    // Owner-thread shutdown only: first stop/join all producers, then call stop.
+    // Sequential repeated calls are safe; concurrent stop calls are unsupported.
     void stop();
 
     uint64_t droppedCount() const;
@@ -42,7 +44,7 @@ private:
 
     void workerLoop();
 
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::condition_variable cv_;
 
     std::deque<LogItem> queue_;

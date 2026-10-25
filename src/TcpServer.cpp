@@ -1,6 +1,7 @@
 #include "TcpServer.h"
 #include"setNotBlocking.h"
-#include <iostream>
+#include "Logger.h"
+#include <string>
 #include <unistd.h>
 #include<cstdio>
 #include<cerrno>
@@ -188,7 +189,8 @@ void TcpServer::handleAccept()
         {
             continue;
         }
-        perror("accept");
+        const int error = errno;
+        Logger::instance().log(LogLevel::Error, "accept failed errno=" + std::to_string(error));
         break;
     }
 
@@ -207,7 +209,7 @@ void TcpServer::handleAccept()
         loop_.queueInLoop([this,client_fd,alive=std::weak_ptr<int>(lifetime_)](){
             if (alive.expired()) return;
             connections_.erase(client_fd);
-            std::cout<<"client_fd:"<<client_fd<<" is closed\n";
+            Logger::instance().log(LogLevel::Info, "connection closed fd=" + std::to_string(client_fd));
         });
     });
     //get the channel
@@ -224,6 +226,6 @@ void TcpServer::handleAccept()
         loop_.removeChannel(client_fd);
         throw;
     }
-    std::cout<<"new client:"<<client_fd<<"\n";
+    Logger::instance().log(LogLevel::Info, "connection accepted fd=" + std::to_string(client_fd));
    }
 }
