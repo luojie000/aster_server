@@ -69,10 +69,13 @@ void TcpConnection::handleRead()
         if (n > 0) {
             outputBuffer_.append(buffer, static_cast<size_t>(n));
 
-             Logger::instance().log(
-        LogLevel::Debug,
-        "received fd=" + std::to_string(fd_) +
-        " bytes=" + std::to_string(n)+" whose message is:"+outputBuffer_);
+             
+Logger::instance().log(
+    LogLevel::Debug,
+    "received fd=" + std::to_string(fd_) +
+    " bytes=" + std::to_string(n)
+);
+
 
             continue;
         }

@@ -37,6 +37,12 @@ add_executable(event_loop_test tests/event_loop_test.cpp src/EventLoop.cpp src/E
 target_include_directories(event_loop_test PRIVATE ${PROJECT_SOURCE_DIR}/include)
 add_test(NAME event_loop_callbacks COMMAND event_loop_test)
 set_tests_properties(event_loop_callbacks PROPERTIES TIMEOUT 5)
+
+add_executable(event_loop_wakeup_test tests/event_loop_wakeup_test.cpp src/EventLoop.cpp src/Epoll.cpp src/Channel.cpp)
+target_include_directories(event_loop_wakeup_test PRIVATE ${PROJECT_SOURCE_DIR}/include)
+target_link_libraries(event_loop_wakeup_test PRIVATE Threads::Threads)
+add_test(NAME event_loop_wakeup COMMAND event_loop_wakeup_test)
+set_tests_properties(event_loop_wakeup PROPERTIES TIMEOUT 15)
 endif()
 
 if(BUILD_TESTING)
