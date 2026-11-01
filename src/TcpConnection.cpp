@@ -49,8 +49,45 @@ void TcpConnection::handleClose()
 {
     if (closed_) return;
     closed_ = true;
+    lifetime_.reset(); // Invalidate results immediately, before deferred erase.
     loop_.removeChannel(fd_);
     if (closeCallback_) closeCallback_();
+}
+
+void TcpConnection::setRequestCallback(RequestCallback cb)
+{
+    requestCallback_ = std::move(cb);
+}
+
+void TcpConnection::dispatchRequest()
+{
+    if (!requestCallback_ || closed_) return;
+    const auto end = inputBuffer_.find('\n');
+    // Validate the first waiting line even while a previous task is running.
+    if ((end == std::string::npos && inputBuffer_.size() > kLineLimit) ||
+        (end != std::string::npos && end > kLineLimit)) {
+        handleClose();
+        return;
+    }
+    if (processingRequest_ || end == std::string::npos ||
+        outputBuffer_.size() > kOutputLimit - kResponseLimit) return;
+    std::string request = inputBuffer_.substr(0, end);
+    inputBuffer_.erase(0, end + 1);
+    processingRequest_ = true;
+    requestCallback_(std::move(request));
+}
+
+void TcpConnection::completeRequest(std::string response)
+{
+    if (closed_ || !processingRequest_) return;
+    processingRequest_ = false;
+    if (response.size() > kResponseLimit ||
+        response.size() > kOutputLimit - outputBuffer_.size()) {
+        handleClose();
+        return;
+    }
+    outputBuffer_ += response;
+    handleWrite();
 }
 
 void TcpConnection::handleRead()
@@ -64,10 +101,22 @@ void TcpConnection::handleRead()
             loop_.updateChannel(channel_.get());
             break;
         }
-        const auto capacity = std::min(sizeof(buffer), kOutputLimit - outputBuffer_.size());
+        if (requestCallback_ && inputBuffer_.size() == kInputLimit) {
+            handleClose(); // Bounded pipelining; do not accumulate an unbounded queue.
+            return;
+        }
+        const auto available = requestCallback_ ? kInputLimit - inputBuffer_.size()
+                                                : kOutputLimit - outputBuffer_.size();
+        const auto capacity = std::min(sizeof(buffer), available);
         const ssize_t n = recv(fd_, buffer, capacity, 0);
         if (n > 0) {
-            outputBuffer_.append(buffer, static_cast<size_t>(n));
+            if (requestCallback_) {
+                inputBuffer_.append(buffer, static_cast<size_t>(n));
+                dispatchRequest();
+                if (closed_) return;
+            } else {
+                outputBuffer_.append(buffer, static_cast<size_t>(n));
+            }
 
              
 Logger::instance().log(
@@ -158,6 +207,9 @@ void TcpConnection::handleWrite()
         channel_->enableReading();
         loop_.updateChannel(channel_.get());
     }
-    if (readClosed_ && outputBuffer_.empty()) handleClose();
+    dispatchRequest();
+    // A FIN is a half-close: finish complete lines and their responses first.
+    // A final fragment without '\n' is discarded when the connection closes.
+    if (readClosed_ && outputBuffer_.empty() && !processingRequest_) handleClose();
 }
   

@@ -24,7 +24,7 @@ target_include_directories(aster_server
 )
 
 find_package(Threads REQUIRED)
-target_sources(aster_server PRIVATE src/Logger.cpp)
+target_sources(aster_server PRIVATE src/Logger.cpp src/ThreadPool.cpp src/RequestProcessor.cpp)
 target_link_libraries(aster_server PRIVATE Threads::Threads)
 
 include(CTest)
@@ -47,7 +47,7 @@ endif()
 
 if(BUILD_TESTING)
     add_executable(lifecycle_test tests/lifecycle_test.cpp src/TcpServer.cpp src/TcpConnection.cpp src/EventLoop.cpp src/Epoll.cpp src/Channel.cpp src/setNotBlocking.cpp)
-    target_sources(lifecycle_test PRIVATE src/Logger.cpp)
+    target_sources(lifecycle_test PRIVATE src/Logger.cpp src/ThreadPool.cpp)
     target_link_libraries(lifecycle_test PRIVATE Threads::Threads)
     target_include_directories(lifecycle_test PRIVATE ${PROJECT_SOURCE_DIR}/include)
     add_test(NAME connection_lifecycle COMMAND lifecycle_test)
@@ -73,4 +73,32 @@ if(BUILD_TESTING)
     set_tests_properties(logger_unit PROPERTIES TIMEOUT 10)
     add_test(NAME logger_shutdown COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/tests/logger_shutdown.py $<TARGET_FILE:aster_server>)
     set_tests_properties(logger_shutdown PROPERTIES TIMEOUT 20)
+endif()
+
+
+if(BUILD_TESTING)
+    add_executable(thread_pool_test tests/thread_pool_test.cpp src/ThreadPool.cpp)
+    target_include_directories(thread_pool_test PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(thread_pool_test PRIVATE Threads::Threads)
+    add_test(NAME thread_pool COMMAND thread_pool_test)
+    set_tests_properties(thread_pool PROPERTIES TIMEOUT 10)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(business_processing_test tests/business_processing_test.cpp
+        src/TcpServer.cpp src/TcpConnection.cpp src/EventLoop.cpp src/Epoll.cpp
+        src/Channel.cpp src/setNotBlocking.cpp src/Logger.cpp src/ThreadPool.cpp
+        src/RequestProcessor.cpp)
+    target_include_directories(business_processing_test PRIVATE ${PROJECT_SOURCE_DIR}/include)
+    target_link_libraries(business_processing_test PRIVATE Threads::Threads)
+    foreach(case processor success multiclient disconnect shutdown limits errors)
+        add_test(NAME business_${case} COMMAND business_processing_test ${case})
+        set_tests_properties(business_${case} PROPERTIES TIMEOUT 15)
+    endforeach()
+endif()
+
+if(BUILD_TESTING)
+    add_test(NAME business_cli COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/tests/business_cli.py $<TARGET_FILE:aster_server>)
+    set_tests_properties(business_cli PROPERTIES TIMEOUT 20)
 endif()

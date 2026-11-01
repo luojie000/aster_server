@@ -51,8 +51,9 @@ int main(int argc, char** argv)
 {
     try {
         int port = 8080;
-        if (argc > 2) throw std::invalid_argument("usage: aster_server [port: 0..65535]");
-        if (argc == 2) {
+        if (argc > 3 || (argc == 3 && std::string_view(argv[2]) != "--calc"))
+            throw std::invalid_argument("usage: aster_server [port: 0..65535] [--calc]");
+        if (argc >= 2) {
             const std::string_view value(argv[1]);
             auto result = std::from_chars(value.data(), value.data() + value.size(), port);
             if (result.ec != std::errc{} || result.ptr != value.data() + value.size())
@@ -79,7 +80,9 @@ int main(int argc, char** argv)
                 }
             });
             loop.addChannel(&signalChannel);
-            TcpServer server(loop, port);
+            TcpServer server(loop, port, argc == 3
+                ? RequestProcessor::Handler(RequestProcessor::process)
+                : RequestProcessor::Handler{});
             server.start();
             // Keep this synchronous and first: test/startup consumers parse it.
             std::cerr << "LISTENING " << server.port() << std::endl;

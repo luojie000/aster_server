@@ -12,25 +12,34 @@
 #include <netinet/in.h>
 #include<stdexcept>
 
-TcpServer::TcpServer(EventLoop&loop,int port):loop_(loop),server_fd(-1),port_(port),handleAccept_(nullptr){}
+TcpServer::TcpServer(EventLoop&loop,int port, RequestProcessor::Handler processor)
+    : loop_(loop), server_fd(-1), port_(port), handleAccept_(nullptr),
+      processor_(std::move(processor))
+{
+    if (processor_) workers_ = std::make_unique<ThreadPool>(2);
+}
 
 
 TcpServer::~TcpServer()
 {
+    // Stop accepting connections before waiting for business work. Otherwise
+    // clients can still connect into the listening backlog during a slow join.
+    if (server_fd != -1) {
+        loop_.removeChannel(server_fd);
+        close(server_fd);
+        server_fd = -1;
+    }
+    delete handleAccept_;
+    handleAccept_ = nullptr;
     lifetime_.reset();
+    // Workers only enqueue results; they never wait for the loop. Join before
+    // destroying connections, and crucially before the owner destroys EventLoop.
+    if (workers_) workers_->stop();
 
     for(auto&connection:connections_)
     {
         loop_.removeChannel(connection.first);
     }
-    if(server_fd!= -1)
-    {
-        loop_.removeChannel(server_fd);
-        close(server_fd);
-    }
-
-
-    delete handleAccept_;
 
 }
 
@@ -212,6 +221,12 @@ void TcpServer::handleAccept()
             Logger::instance().log(LogLevel::Info, "connection closed fd=" + std::to_string(client_fd));
         });
     });
+    if (processor_) {
+        connection->setRequestCallback(
+            [this, client_fd, token = connection->lifetimeToken()](std::string request) {
+                submitRequest(client_fd, token, std::move(request));
+            });
+    }
     //get the channel
     Channel* client_channel=connection->channel();
     //注册到eventloop
@@ -228,4 +243,47 @@ void TcpServer::handleAccept()
     }
     Logger::instance().log(LogLevel::Info, "connection accepted fd=" + std::to_string(client_fd));
    }
+}
+
+void TcpServer::submitRequest(int fd, std::weak_ptr<int> connectionLife,
+                              std::string request)
+{
+    // This closure may be carried by a worker, but only EXECUTES in EventLoop.
+    // Never capture a TcpConnection*. fd alone is insufficient: it can be reused.
+    auto deliver = [this, alive = std::weak_ptr<int>(lifetime_), connectionLife, fd]
+                   (std::string response, bool counted) {
+        if (alive.expired()) return;
+        if (counted) --pendingRequests_;
+        const auto token = connectionLife.lock();
+        if (!token) return;
+        const auto it = connections_.find(fd);
+        if (it == connections_.end() || it->second->lifetimeToken().lock() != token)
+            return;
+        it->second->completeRequest(std::move(response));
+    };
+    if (pendingRequests_ >= kMaxPendingRequests) {
+        // Still deferred: never reenter TcpConnection from its request callback.
+        loop_.queueInLoop([deliver] { deliver("ERR busy\n", false); });
+        return;
+    }
+    ++pendingRequests_;
+    try {
+        workers_->submit([request = std::move(request), processor = processor_,
+                          loop = &loop_, deliver] {
+            std::string response;
+            try {
+                response = processor(request);
+                if (response.size() > TcpConnection::kResponseLimit)
+                    response = "ERR response too large\n";
+            } catch (...) {
+                response = "ERR processing\n";
+            }
+            loop->queueInLoop([deliver, response = std::move(response)]() mutable {
+                deliver(std::move(response), true);
+            });
+        });
+    } catch (...) {
+        --pendingRequests_;
+        loop_.queueInLoop([deliver] { deliver("ERR unavailable\n", false); });
+    }
 }

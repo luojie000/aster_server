@@ -10,3 +10,5 @@ core
 
 /build-engineering-*/
 __pycache__/
+
+/build-business-sanitize/
