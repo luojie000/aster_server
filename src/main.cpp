@@ -11,6 +11,8 @@
 #include <string_view>
 #include <stdexcept>
 
+//创建命名空间，创造屏蔽信号接收ctrl+c，杀死进程等
+//然后加入epoll，当出现程序终止信号时，可以先执行其他任务，等任务终止后再退出
 namespace {
 // Block before creating Logger so its worker inherits the mask. The loop reads
 // signals as ordinary fd events; no C++ or logging runs in a signal handler.
@@ -19,11 +21,12 @@ public:
     ShutdownSignals() {
         sigset_t mask;
         sigemptyset(&mask);
-        sigaddset(&mask, SIGINT);
-        sigaddset(&mask, SIGTERM);
+        sigaddset(&mask, SIGINT);//ctrl+c
+        sigaddset(&mask, SIGTERM);//kill pid
         if (pthread_sigmask(SIG_BLOCK, &mask, &previous_) != 0)
             throw std::runtime_error("pthread_sigmask failed");
         fd_ = signalfd(-1, &mask, SFD_NONBLOCK | SFD_CLOEXEC);
+        //设置fd并加入epoll
         if (fd_ == -1) {
             pthread_sigmask(SIG_SETMASK, &previous_, nullptr);
             throw std::runtime_error("signalfd failed");

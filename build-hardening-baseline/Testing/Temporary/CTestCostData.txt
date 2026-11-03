@@ -1,0 +1,21 @@
+reactor_integration 1 0.519335
+event_loop_callbacks 1 0.00502105
+event_loop_wakeup 1 0.00927757
+connection_lifecycle 0 0
+backpressure_1 1 0.0067414
+backpressure_2 1 0.022494
+backpressure_3 1 0.0277946
+backpressure_4 1 0.0204756
+logger_unit 1 0.00588415
+logger_shutdown 1 0.128905
+thread_pool 1 0.0133193
+business_processor 1 0.191802
+business_success 1 0.20692
+business_multiclient 1 0.0156641
+business_disconnect 1 0.23069
+business_shutdown 1 0.015744
+business_limits 1 0.226968
+business_errors 1 0.0185353
+business_cli 1 0.365515
+---
+connection_lifecycle
